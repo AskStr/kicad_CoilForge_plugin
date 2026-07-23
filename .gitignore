@@ -1,0 +1,85 @@
+# -----------------------------------------------------------------------------
+# CoilForge source repository exclusions
+# Documentation under README*.md and docs/ is source content and must remain
+# tracked. Build outputs, local indexes, caches and machine-specific files do
+# not belong in version control.
+# -----------------------------------------------------------------------------
+
+# Operating-system metadata
+.DS_Store
+.DS_Store?
+Thumbs.db
+Desktop.ini
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments and local environment files
+.venv/
+venv/
+env/
+environments/
+ENV/
+.env
+.env.*
+!.env.example
+
+# Build, package and release artifacts
+build/
+dist/
+*.egg-info/
+*.whl
+*.tar.gz
+*.zip
+*.7z
+
+# Temporary files and logs
+.tmp/
+.tmp-*/
+tmp/
+temp/
+*.tmp
+*.tmp.*
+*.bak
+*.swp
+*.swo
+*.log
+
+# Local KiCad/API documentation cache and generated CodeGraph index
+.tmp-kicad-api-doc/
+.codegraph/
+
+# IDE/editor metadata
+.idea/
+.vscode/
+*.code-workspace
+
+# Local plugin/runtime state accidentally copied into the repository
+coilforge-settings.json
+coilforge-profiles.json
+settings.json
+
+# KiCad lock, backup and local-user files if a board/project is opened here
+*.lck
+*.kicad_prl
+*.kicad_pro-bak
+*.kicad_sch-bak
+*.kicad_pcb-bak
+
+# Generated test reports
+junit.xml
+test-results/
+reports/
+.codegraph/

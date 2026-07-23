@@ -1,0 +1,28 @@
+{
+  "$schema": "https://go.kicad.org/api/schemas/v1",
+  "identifier": "org.coilforge.kicad_spiral_plugin",
+  "name": "CoilForge",
+  "description": "By askstar / 问星。Creates configurable circular and motor PCB coils / 可生成可配置的圆形及电机 PCB 线圈。",
+  "runtime": {
+    "type": "python",
+    "min_version": "3.10"
+  },
+  "actions": [
+    {
+      "identifier": "create-spiral-coil",
+      "name": "CoilForge",
+      "description": "Open CoilForge and generate a PCB spiral coil / 打开 CoilForge 并生成 PCB 螺旋线圈",
+      "show-button": true,
+      "scopes": [
+        "pcb"
+      ],
+      "entrypoint": "ipc_plugin.py",
+      "icons-light": [
+        "assets/coilforge.png"
+      ],
+      "icons-dark": [
+        "assets/coilforge.png"
+      ]
+    }
+  ]
+}
