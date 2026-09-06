@@ -83,3 +83,6 @@ junit.xml
 test-results/
 reports/
 .codegraph/
+
+# Local task planning files
+/plan/

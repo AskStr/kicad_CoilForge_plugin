@@ -59,8 +59,9 @@ tests/                   单元与回归测试
 __init__.py              传统 ActionPlugin 注册入口
 ipc_plugin.py            IPC 插件入口
 kicad_spiral_plugin.py   传统入口兼容薄封装
-package_plugin.py        可重复 ZIP 打包脚本
+package_plugin.py        PCM IPC 安装包构建与校验
 plugin.json              KiCad IPC 插件清单
+pcm/                     PCM 元数据模板与官方 Schema 快照
 ```
 
 更多设计说明：
@@ -70,25 +71,40 @@ plugin.json              KiCad IPC 插件清单
 
 ## 安装
 
-### KiCad IPC 插件
+### KiCad IPC 插件（推荐）
 
-1. 使用发布 ZIP，或运行 `python package_plugin.py` 生成安装包。
-2. 将 ZIP 安装到 KiCad 插件与内容管理器支持的位置。
-3. `plugin.json` 入口会启动 `ipc_plugin.py`。
+**v0.2.7 起的发布 ZIP 是 PCM 安装包，不是源码压缩包。** 目标环境为 **KiCad 10.0+**、
+已启用的 IPC API，以及带 **tkinter 的 Python 3.10+**。当前发布状态为 `testing`；
+已验证范围及限制见[安装与兼容性说明](docs/installation.md)。
+
+1. 下载发布附件 `kicad_CoilForge_plugin-v<version>.zip`，不要选择 GitHub 自动生成的 **Source code (zip)**。
+2. 打开 KiCad 项目管理器 → **插件与内容管理器（PCM）** → **从文件安装…**，直接选择 ZIP，无需解压。
+3. 在 **偏好设置 → 插件** 中启用 API 服务器，并选择可用的 Python 解释器。
+4. 重启 PCB 编辑器、打开 PCB，从 IPC 插件入口或工具栏启动 **CoilForge**。
+
+KiCad 管理插件的 Python 环境并安装 `requirements.txt`。首次准备依赖需要网络或预先配置的
+包镜像；**从本地 ZIP 安装不等于依赖也可以完全离线安装**。`tkinter` 必须由所选 Python 提供，
+不要尝试通过 `pip install tkinter` 安装。
 
 ### 传统 ActionPlugin
 
-将完整插件目录放入 KiCad 的 Python 插件目录，重启 KiCad 后从 PCB 编辑器的外部插件菜单启动 CoilForge。
+保留源码级兼容入口：将**完整源码目录**放入对应 KiCad 版本的 Python scripting 插件目录。
+不要把新的 PCM ZIP 按传统目录包解压安装，也不要同时保留两份可加载的插件副本。
+从旧包升级、设置保留和故障排查见[详细安装文档](docs/installation.md)。
 
 ## 开发与测试
 
 ```powershell
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s tests -v
 python package_plugin.py
-python package_plugin.py --include-tests
 ```
 
-打包脚本采用固定 ZIP 时间戳和 POSIX 路径，便于重复构建和跨平台安装。
+当前输出为 `dist/kicad_CoilForge_plugin-v0.2.7.zip`。构建器先使用仓库内的 KiCad 官方 Schema
+离线校验 PCM 元数据与 IPC 清单，再原子替换发布 ZIP；采用固定时间戳、排序和 POSIX 路径。
+`jsonschema` 仅供构建和测试，不会加入 IPC 插件的运行时依赖。
+
+包结构、标识符、可重复构建、发布验收和诊断参数见[打包与发布规范](docs/packaging.md)。
 
 ## License
 

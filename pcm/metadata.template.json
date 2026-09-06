@@ -1,0 +1,18 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2",
+  "description": "PCB spiral coils and planar-motor windings with an English / Simplified Chinese interface.",
+  "description_full": "CoilForge creates configurable PCB spiral coils and planar-motor windings. The IPC plugin provides an English and Simplified Chinese interface. Requires KiCad 10.0 or later, an enabled IPC API server, and Python 3.10+ with tkinter. KiCad installs the kicad-python dependency in its managed plugin environment. First-time dependency setup requires network access or a preconfigured package mirror.",
+  "type": "plugin",
+  "author": {
+    "name": "askstar",
+    "contact": {
+      "web": "https://github.com/AskStr"
+    }
+  },
+  "license": "GPL-3.0-or-later",
+  "resources": {
+    "homepage": "https://github.com/AskStr/kicad_CoilForge_plugin",
+    "issues": "https://github.com/AskStr/kicad_CoilForge_plugin/issues"
+  },
+  "tags": ["coil", "motor", "pcb"]
+}

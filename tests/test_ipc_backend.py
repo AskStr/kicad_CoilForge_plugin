@@ -1,4 +1,9 @@
 import math
+import os
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 import unittest
 
 from coilforge.ipc_backend import IpcBoardBackend, mm_to_nm, nm_to_mm
@@ -256,6 +261,65 @@ class IpcBackendTests(unittest.TestCase):
         self.assertEqual("spiral", group.name)
 
 
+
+class IpcSettingsPathTests(unittest.TestCase):
+    def setUp(self):
+        self.client = FakeKiCad()
+        self.backend = IpcBoardBackend(self.client)
+
+    def test_current_settings_take_precedence_without_migrating_files(self):
+        from coilforge.metadata import (
+            IPC_PLUGIN_IDENTIFIER, LEGACY_IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory) / "plugins"
+            current = parent / IPC_PLUGIN_IDENTIFIER / SETTINGS_FILENAME
+            legacy = parent / LEGACY_IPC_PLUGIN_IDENTIFIER / SETTINGS_FILENAME
+            with mock.patch.object(self.client, "get_plugin_settings_path", return_value=str(current.parent)) as api:
+                self.assertEqual(str(current), self.backend.plugin_settings_file())
+                api.assert_called_with(IPC_PLUGIN_IDENTIFIER)
+                legacy.parent.mkdir(parents=True)
+                legacy.write_text("legacy settings", encoding="utf-8")
+                self.assertEqual(str(legacy), self.backend.plugin_settings_file())
+                self.assertFalse(current.exists())
+                current.parent.mkdir(parents=True)
+                current.write_text("current settings", encoding="utf-8")
+                self.assertEqual(str(current), self.backend.plugin_settings_file())
+                self.assertEqual("legacy settings", legacy.read_text(encoding="utf-8"))
+                self.assertEqual("current settings", current.read_text(encoding="utf-8"))
+
+    def test_kicad_10_0_identifier_regression_uses_exact_config_root(self):
+        from kipy.errors import ApiError
+        from coilforge.metadata import IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME
+        self.backend.version = SimpleNamespace(major=10, minor=0, patch=4)
+        error = ApiError("KiCad returned error: plugin identifier is invalid")
+        with tempfile.TemporaryDirectory() as directory:
+            expected = os.path.join(directory, "10.0", "plugins", IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME)
+            with mock.patch.object(self.client, "get_plugin_settings_path", side_effect=error):
+                with mock.patch.dict(os.environ, {"KICAD_CONFIG_HOME": directory}):
+                    self.assertEqual(expected, self.backend.plugin_settings_file())
+                with mock.patch.dict(os.environ, {"KICAD_CONFIG_HOME": ""}):
+                    with mock.patch("coilforge.ipc_backend.platform_kicad_config_root", return_value=directory):
+                        self.assertEqual(expected, self.backend.plugin_settings_file())
+            self.assertFalse(Path(expected).exists())
+
+    def test_other_api_errors_and_versions_are_not_hidden(self):
+        from kipy.errors import ApiError
+        from kipy.proto.common.envelope_pb2 import ApiStatusCode
+        cases = (
+            (10, 99, ApiError("KiCad returned error: plugin identifier is invalid")),
+            (11, 0, ApiError("KiCad returned error: plugin identifier is invalid")),
+            (10, 0, ApiError("KiCad returned error: another failure")),
+            (10, 0, ApiError("KiCad returned error: plugin identifier is invalid", code=ApiStatusCode.AS_UNHANDLED)),
+            (10, 0, ConnectionError("server unavailable")),
+        )
+        for major, minor, error in cases:
+            with self.subTest(major=major, minor=minor, error=str(error)):
+                self.backend.version = SimpleNamespace(major=major, minor=minor, patch=0)
+                with mock.patch.object(self.client, "get_plugin_settings_path", side_effect=error):
+                    with self.assertRaises(type(error)):
+                        self.backend.plugin_settings_file()
+
+
 if __name__ == "__main__":
     unittest.main()
-
