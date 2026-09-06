@@ -1,4 +1,4 @@
-# CoilForge v0.2.6
+# CoilForge v0.2.8
 
 [简体中文](README.zh-CN.md) | [Documentation index](docs/README.md)
 
@@ -29,22 +29,33 @@ CoilForge is an open-source KiCad PCB coil and planar-motor winding generator by
 
 ## Installation
 
-The **v0.2.7+ release ZIP is a PCM IPC installation package**, not a source-code ZIP.
-Target: **KiCad 10.0+**, with the IPC API enabled and **Python 3.10+ with tkinter**.
-The release is marked `testing`; see the [installation and compatibility guide](docs/installation.en.md)
-for the verification boundary and troubleshooting.
+Use **`kicad_CoilForge_plugin-v0.2.8-PCM.zip`** for **KiCad 6–10.99**.
+This unified package preserves the two working v0.2.6 interfaces and the coil algorithms.
 
-1. Download the versioned `kicad_CoilForge_plugin-v<version>.zip` release asset; do not use GitHub's **Source code (zip)**.
-2. Open KiCad's project manager → **Plugin and Content Manager** → **Install from File…**, and select the ZIP without extracting it.
-3. Enable the API server and select a working Python interpreter in **Preferences → Plugins**.
-4. Restart the PCB editor, open a board, and launch **CoilForge** from the IPC plugin controls/toolbar.
+| KiCad / setting | Automatically selected runtime |
+|---|---|
+| 6–8; 9/10.0 with API disabled | Existing pcbnew / wxPython ActionPlugin |
+| 9/10.0 with API enabled; 10.99 | Existing IPC / Tk interface |
 
-KiCad manages the plugin's Python environment and installs `requirements.txt`. First-time dependency
-setup needs network access (or a configured package mirror); offline ZIP installation does **not**
-bundle Python dependencies. `tkinter` must be supplied by the selected Python installation.
+1. Download the release asset, not GitHub's **Source code (zip)**.
+2. Open KiCad's project manager → **Plugin and Content Manager** → **Install from File…** and select
+   the ZIP directly, without extracting it.
+3. Restart the PCB editor, open a board and click CoilForge's plugin toolbar icon.
 
-Legacy ActionPlugin users must install the **source directory** into their KiCad Python scripting
-plugin directory instead. Do not install the IPC release ZIP that way or keep two active copies.
+**KiCad 10.99 requires an enabled API and Python 3.10+ with `tkinter`, `_tkinter`, Tcl/Tk, venv and pip.**
+These prerequisites also apply when enabling IPC on 9/10.0. Keep a previously working interpreter;
+PCM packaging does not replace the Tk UI or remove its dependencies. Restart after changing API
+settings. Remove old loadable manual/split-package duplicates without deleting user settings.
+
+### Online updates
+
+Standard PCM indexes are generated under `pcm/repository/`. After the indexes and release ZIP are
+published, add the repository in PCM and install from it to enable repository tracking. KiCad 7–10.99
+can offer native updates; 6.0.11 refreshes the version index but requires manual uninstall/reinstall
+for upgrades. A local-file installation does not automatically subscribe to a repository.
+
+**The files are prepared locally, not uploaded by the build scripts.** See the
+[installation guide, repository setup and tested version matrix](docs/installation.en.md).
 
 ## Development and packaging
 
@@ -54,9 +65,10 @@ python -m unittest discover -s tests -v
 python package_plugin.py
 ```
 
-The current output is `dist/kicad_CoilForge_plugin-v0.2.7.zip`. Every build validates both manifests
-against vendored official KiCad schemas before atomically replacing the release file. Runtime
-requirements remain separate from the build/test-only `jsonschema` dependency.
+The output is `dist/kicad_CoilForge_plugin-v0.2.8-PCM.zip`. Builds validate the unified metadata
+against both vendored official PCM schemas and validate the IPC manifest before atomically replacing
+the release file. `package_repository.py` generates version history, download hashes and update
+indexes from the completed ZIP. `jsonschema` remains a build/test dependency only.
 
 See the [packaging contract and release checklist](docs/packaging.en.md). Geometry, electrical
 calculations, and the UI are not changed by the PCM packaging migration.
@@ -70,8 +82,9 @@ calculations, and the UI are not changed by the PCM packaging migration.
 - `coilforge/ipc_ui.py` / `ipc_backend.py` — IPC UI and KiCad backend.
 - `coilforge/preview.py` — output-equivalent preview scene.
 - `tests/` — geometry, electrical, UI, preset, i18n and packaging regression tests.
-- `pcm/` — PCM metadata template and pinned official PCM/IPC schemas.
-- `package_plugin.py` — deterministic, schema-validated PCM IPC ZIP builder.
+- `pcm/` — PCM registration shim, metadata template, online indexes and pinned official schemas.
+- `package_plugin.py` — deterministic, schema-validated unified PCM ZIP builder.
+- `package_repository.py` — standard PCM online repository index generator.
 
 ## Documentation
 

@@ -1,0 +1,41 @@
+{
+  "packages": [
+    {
+      "$schema": "https://go.kicad.org/pcm/schemas/v1",
+      "author": {
+        "contact": {
+          "web": "https://github.com/AskStr"
+        },
+        "name": "askstar"
+      },
+      "description": "PCB spiral coils and planar-motor windings with an English / Simplified Chinese interface.",
+      "description_full": "CoilForge creates PCB coils with the existing ActionPlugin and IPC/Tk interfaces. One PCM package supports KiCad 6–10.99. With the API disabled, SWIG-capable versions use built-in pcbnew/wxPython. With the API enabled, KiCad 9+ uses IPC and requires Python 3.10+ with tkinter, _tkinter, Tcl/Tk, venv and pip. KiCad 10.99 requires the API. IPC dependencies may need a package index.",
+      "identifier": "com.github.askstr.kicad-coilforge-plugin",
+      "license": "GPL-3.0",
+      "name": "CoilForge",
+      "resources": {
+        "homepage": "https://github.com/AskStr/kicad_CoilForge_plugin",
+        "issues": "https://github.com/AskStr/kicad_CoilForge_plugin/issues"
+      },
+      "tags": [
+        "coil",
+        "motor",
+        "pcb"
+      ],
+      "type": "plugin",
+      "versions": [
+        {
+          "download_sha256": "41e21a40a249a2e0d7565db654300ca3478aceab0abf04a6d13b1724e903b80d",
+          "download_size": 131386,
+          "download_url": "https://github.com/AskStr/kicad_CoilForge_plugin/releases/download/V0.2.8/kicad_CoilForge_plugin-v0.2.8-PCM.zip",
+          "install_size": 618002,
+          "kicad_version": "6.0",
+          "kicad_version_max": "10.99",
+          "runtime": "ipc",
+          "status": "testing",
+          "version": "0.2.8"
+        }
+      ]
+    }
+  ]
+}

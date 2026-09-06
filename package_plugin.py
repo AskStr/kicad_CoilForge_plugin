@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Build and validate a deterministic KiCad PCM IPC installation archive."""
+"""Build and validate a deterministic KiCad PCM installation archive."""
 
 import argparse
 import json
@@ -12,14 +12,16 @@ import tempfile
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from coilforge.metadata import (
-    ARCHIVE_BASENAME, IPC_PLUGIN_IDENTIFIER, MIN_KICAD_VERSION,
+    ARCHIVE_BASENAME, PCM_ARCHIVE_BASENAME, MAX_PCM_KICAD_VERSION,
+    IPC_PLUGIN_IDENTIFIER, MIN_KICAD_VERSION,
+    MIN_LEGACY_KICAD_VERSION, MAX_LEGACY_KICAD_VERSION,
     PACKAGE_IDENTIFIER, PCM_PACKAGE_IDENTIFIER, PLUGIN_BRAND, PLUGIN_VERSION,
 )
 
 
 # Kept as the public archive/legacy name, not the PCM installation directory.
 PLUGIN_NAME = PACKAGE_IDENTIFIER
-RUNTIME_FILES = (
+IPC_RUNTIME_FILES = (
     "ipc_plugin.py",
     "plugin.json",
     "requirements.txt",
@@ -28,6 +30,11 @@ RUNTIME_FILES = (
     "coilforge/metadata.py",
     "coilforge/ipc_backend.py",
     "coilforge/ipc_ui.py",
+)
+LEGACY_RUNTIME_FILES = (
+    "__init__.py", "kicad_spiral_plugin.py", "assets/coilforge.png",
+    "coilforge/__init__.py", "coilforge/metadata.py",
+    "coilforge/legacy_plugin.py", "coilforge/interface.py", "coilforge/compat.py",
 )
 CORE_DIRECTORY = "coilforge"
 DOCUMENT_FILES = ("LICENSE",)
@@ -38,7 +45,7 @@ def _archive_name(relative_path):
     return PurePosixPath("plugins", *relative_path.parts).as_posix()
 
 
-def _validate_schema(root, value, schema_name, label):
+def _validate_schema(root, value, schema_name, label, definition=None):
     try:
         from jsonschema import Draft7Validator
     except ImportError as error:
@@ -49,6 +56,8 @@ def _validate_schema(root, value, schema_name, label):
     schema = json.loads(
         (root / "pcm" / "schemas" / schema_name).read_text(encoding="utf-8")
     )
+    if definition is not None:
+        schema["$ref"] = "#/definitions/" + definition
     Draft7Validator.check_schema(schema)
     errors = list(Draft7Validator(schema).iter_errors(value))
     if errors:
@@ -96,20 +105,26 @@ def _write_file(archive, data, archive_name):
     archive.writestr(info, data, compresslevel=9)
 
 
-def build_archive(source_root=None, output_path=None, include_tests=False):
-    """Build a schema-validated PCM IPC ZIP and return its absolute path.
+def build_archive(source_root=None, output_path=None, include_tests=False, runtime="pcm"):
+    """Build a schema-validated PCM ZIP and return its absolute path.
 
     include_tests retains the old diagnostic option; bundled test sources are
     for inspection, not a standalone development checkout.
     """
+    if runtime not in ("pcm", "swig", "ipc"):
+        raise ValueError("Unsupported plugin runtime: " + str(runtime))
+    basename = (PCM_ARCHIVE_BASENAME if runtime == "pcm" else
+                ARCHIVE_BASENAME + ("-ipc" if runtime == "ipc" else ""))
     root = Path(source_root or Path(__file__).resolve().parent).resolve()
     output = Path(
-        output_path or root / "dist" / (ARCHIVE_BASENAME + ".zip")
+        output_path or root / "dist" / (basename + ".zip")
     ).expanduser().resolve()
     if output.suffix.lower() != ".zip":
         raise ValueError("Output must be a .zip archive")
 
-    relative_files = {Path(name) for name in RUNTIME_FILES + DOCUMENT_FILES}
+    runtime_files = (IPC_RUNTIME_FILES + LEGACY_RUNTIME_FILES if runtime == "pcm"
+                     else IPC_RUNTIME_FILES if runtime == "ipc" else LEGACY_RUNTIME_FILES)
+    relative_files = {Path(name) for name in runtime_files + DOCUMENT_FILES}
     relative_files.update(
         path.relative_to(root)
         for path in (root / CORE_DIRECTORY).glob("*.py")
@@ -127,7 +142,10 @@ def build_archive(source_root=None, output_path=None, include_tests=False):
         _archive_name(path): (root / path).read_bytes()
         for path in sorted(relative_files)
     }
-    _validate_plugin(root, entries)
+    if runtime == "pcm":
+        entries["plugins/__init__.py"] = (root / "pcm" / "entrypoint.py").read_bytes()
+    if runtime in ("pcm", "ipc"):
+        _validate_plugin(root, entries)
     metadata = json.loads(
         (root / "pcm" / "metadata.template.json").read_text(encoding="utf-8")
     )
@@ -137,12 +155,43 @@ def build_archive(source_root=None, output_path=None, include_tests=False):
         "versions": [{
             "version": PLUGIN_VERSION,
             "status": "testing",
-            "kicad_version": MIN_KICAD_VERSION,
-            "runtime": "ipc",
+            "kicad_version": (MIN_KICAD_VERSION if runtime == "ipc"
+                              else MIN_LEGACY_KICAD_VERSION),
             "install_size": sum(len(data) for data in entries.values()),
         }],
     })
-    _validate_schema(root, metadata, "pcm.v2.schema.json", "metadata.json")
+    if runtime == "ipc":
+        metadata["versions"][0]["runtime"] = "ipc"
+        schema_name = "pcm.v2.schema.json"
+    else:
+        # PCM v1 (KiCad 6+) predates the runtime field and means SWIG.
+        schema_name = "pcm.v1.schema.json"
+        metadata["$schema"] = "https://go.kicad.org/pcm/schemas/v1"
+        # KiCad 6 PCM only accepts its older license vocabulary. LICENSE is unchanged.
+        if metadata["license"] == "GPL-3.0-or-later":
+            metadata["license"] = "GPL-3.0"
+        metadata["versions"][0]["kicad_version_max"] = MAX_LEGACY_KICAD_VERSION
+        metadata["description_full"] = (
+            "CoilForge creates configurable PCB spiral coils and planar-motor "
+            "windings with an English and Simplified Chinese interface. "
+            "Uses the existing pcbnew and wxPython ActionPlugin on KiCad 6–10.0; "
+            "no IPC API server, external Python, tkinter or pip dependencies required. "
+            "For KiCad 10.99, install the IPC package to use the existing Tk interface."
+        )
+    if runtime == "pcm":
+        # Older PCM v1 readers ignore this forward-compatible field. IPC-only
+        # KiCad requires it; the installed shim still supports SWIG hosts.
+        metadata["versions"][0]["runtime"] = "ipc"
+        metadata["versions"][0]["kicad_version_max"] = MAX_PCM_KICAD_VERSION
+        metadata["description_full"] = (
+            "CoilForge creates PCB coils with the existing ActionPlugin and IPC/Tk interfaces. "
+            "One PCM package supports KiCad 6–10.99. With the API disabled, SWIG-capable "
+            "versions use built-in pcbnew/wxPython. With the API enabled, KiCad 9+ uses IPC "
+            "and requires Python 3.10+ with tkinter, _tkinter, Tcl/Tk, venv and pip. "
+            "KiCad 10.99 requires the API. IPC dependencies may need a package index."
+        )
+        _validate_schema(root, metadata, "pcm.v2.schema.json", "metadata.json")
+    _validate_schema(root, metadata, schema_name, "metadata.json")
     if metadata["type"] != "plugin":
         raise ValueError("CoilForge PCM package type must be plugin")
     entries["metadata.json"] = (
@@ -169,11 +218,15 @@ def build_archive(source_root=None, output_path=None, include_tests=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Build a schema-validated KiCad PCM IPC installation ZIP."
+        description="Build one PCM installation ZIP for KiCad 6–10.99."
     )
     parser.add_argument(
         "-o", "--output",
-        help="Output ZIP path (default: dist/" + ARCHIVE_BASENAME + ".zip)",
+        help="Output ZIP path (default: dist/" + PCM_ARCHIVE_BASENAME + ".zip)",
+    )
+    parser.add_argument(
+        "--runtime", choices=("pcm", "swig", "ipc"), default="pcm",
+        help="pcm: unified installation (default); swig/ipc: runtime-specific diagnostic builds",
     )
     parser.add_argument(
         "--include-tests", action="store_true",
@@ -184,6 +237,7 @@ def main(argv=None):
         output = build_archive(
             output_path=arguments.output,
             include_tests=arguments.include_tests,
+            runtime=arguments.runtime,
         )
     except (OSError, ValueError, RuntimeError) as error:
         parser.exit(1, "Package build failed: {}\n".format(error))

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v1",
+  "maintainer": {
+    "contact": {
+      "web": "https://github.com/AskStr"
+    },
+    "name": "askstar"
+  },
+  "name": "CoilForge PCM repository",
+  "packages": {
+    "sha256": "d4ff4c9adbe096391ee7d24a092a4c26b7acb91dd836ed5435ddce16e85b5940",
+    "update_time_utc": "2026-09-06 14:17:23",
+    "update_timestamp": 1788704243,
+    "url": "https://raw.githubusercontent.com/AskStr/kicad_CoilForge_plugin/main/pcm/repository/packages.json"
+  }
+}

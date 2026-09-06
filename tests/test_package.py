@@ -30,7 +30,7 @@ class PackageTests(unittest.TestCase):
         cls.workspace = tempfile.TemporaryDirectory()
         cls.directory = Path(cls.workspace.name)
         cls.archive = build_archive(
-            PROJECT_ROOT, cls.directory / "nested" / "plugin.zip"
+            PROJECT_ROOT, cls.directory / "nested" / "plugin.zip", runtime="ipc"
         )
         with ZipFile(cls.archive) as archive:
             cls.entries = {name: archive.read(name) for name in archive.namelist()}
@@ -176,8 +176,132 @@ print(PLUGIN_VERSION)
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertEqual(PLUGIN_VERSION, result.stdout.strip())
 
+    def test_swig_archive_uses_pcm_v1_and_only_legacy_discovery(self):
+        output = build_archive(PROJECT_ROOT, self.directory / "legacy.zip", runtime="swig")
+        with ZipFile(output) as archive:
+            names = set(archive.namelist())
+            metadata = json.loads(archive.read("metadata.json"))
+            schema = json.loads((
+                PROJECT_ROOT / "pcm/schemas/pcm.v1.schema.json"
+            ).read_text(encoding="utf-8"))
+            Draft7Validator(schema).validate(metadata)
+            self.assertEqual(schema["$id"], metadata["$schema"])
+            version = metadata["versions"][0]
+            self.assertEqual("6.0", version["kicad_version"])
+            self.assertEqual("10.0", version["kicad_version_max"])
+            self.assertNotIn("runtime", version)  # PCM v1 implicitly uses SWIG.
+            self.assertEqual("GPL-3.0", metadata["license"])
+            self.assertEqual(
+                (PROJECT_ROOT / "LICENSE").read_bytes(), archive.read("plugins/LICENSE")
+            )
+            self.assertEqual(PCM_PACKAGE_IDENTIFIER, metadata["identifier"])
+            self.assertEqual(
+                sum(len(archive.read(name)) for name in names if name != "metadata.json"),
+                version["install_size"],
+            )
+            for name in (
+                "__init__.py", "kicad_spiral_plugin.py", "assets/coilforge.png",
+                "coilforge/legacy_plugin.py", "coilforge/interface.py", "coilforge/compat.py",
+            ):
+                self.assertIn("plugins/" + name, names)
+            for name in (
+                "plugin.json", "ipc_plugin.py", "requirements.txt",
+            ):
+                self.assertNotIn("plugins/" + name, names)
+
+    def test_both_pcm_packages_preserve_all_existing_core_modules(self):
+        # Runtime selection only changes discovery entrypoints/PCM metadata,
+        # never substitutes or removes either existing UI implementation.
+        for runtime in ("pcm", "swig", "ipc"):
+            with self.subTest(runtime=runtime):
+                output = build_archive(
+                    PROJECT_ROOT, self.directory / (runtime + "-core.zip"), runtime=runtime
+                )
+                with ZipFile(output) as archive:
+                    for source in (PROJECT_ROOT / "coilforge").glob("*.py"):
+                        self.assertEqual(
+                            source.read_bytes(), archive.read("plugins/coilforge/" + source.name)
+                        )
+
+    def test_ipc_pcm_version_range_includes_kicad_1099(self):
+        version = self.metadata["versions"][0]
+        self.assertEqual("ipc", version["runtime"])
+        self.assertLessEqual(tuple(map(int, version["kicad_version"].split("."))), (10, 99))
+        self.assertNotIn("kicad_version_max", version)
+        self.assertIn("plugins/coilforge/ipc_ui.py", self.entries)
+        self.assertIn(b"import tkinter as tk", self.entries["plugins/coilforge/ipc_ui.py"])
+
+    def test_legacy_pcm_registration_from_installed_layout_without_ipc(self):
+        output = build_archive(PROJECT_ROOT, self.directory / "legacy-import.zip", runtime="swig")
+        with tempfile.TemporaryDirectory(prefix="coilforge legacy installed ") as directory:
+            with ZipFile(output) as archive:
+                installed = Path(directory) / "plugins" / PCM_PACKAGE_IDENTIFIER.replace(".", "_")
+                for name in archive.namelist():
+                    if name.startswith("plugins/"):
+                        path = installed / name[len("plugins/"):]
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_bytes(archive.read(name))
+            code = """
+import importlib, pathlib, sys, types
+from unittest.mock import MagicMock
+sys.path.insert(0, sys.argv[1])
+sys.modules['kipy'] = None
+sys.modules['tkinter'] = None
+registered = []
+class ActionPlugin:
+    def __init__(self):
+        self.defaults()
+    def register(self):
+        registered.append(self)
+pcbnew = types.ModuleType('pcbnew')
+pcbnew.ActionPlugin = ActionPlugin
+sys.modules['pcbnew'] = pcbnew
+wx = MagicMock()
+wx.Dialog = type('Dialog', (), {})
+wx.Panel = type('Panel', (), {})
+wx.ScrolledWindow = type('ScrolledWindow', (), {})
+sys.modules['wx'] = wx
+package = importlib.import_module(sys.argv[2])
+assert len(registered) == 1
+plugin = registered[0]
+assert isinstance(plugin, package.SpiralPlugin)
+assert plugin.show_toolbar_button and callable(plugin.Run)
+assert pathlib.Path(plugin.icon_file_name).is_file()
+print(package.__version__)
+"""
+            result = subprocess.run(
+                [sys.executable, "-I", "-B", "-c", code, str(installed.parent), installed.name],
+                cwd=directory, capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(PLUGIN_VERSION, result.stdout.strip())
+
+    def test_legacy_archive_is_reproducible(self):
+        first = build_archive(PROJECT_ROOT, self.directory / "legacy-first.zip", runtime="swig")
+        second = build_archive(PROJECT_ROOT, self.directory / "legacy-second.zip", runtime="swig")
+        self.assertEqual(first.read_bytes(), second.read_bytes())
+
+    def test_missing_legacy_entrypoint_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.copy_source(directory)
+            with self.assertRaisesRegex(FileNotFoundError, "__init__.py"):
+                build_archive(root, Path(directory) / "invalid.zip")
+
+    def test_unknown_runtime_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unsupported plugin runtime"):
+            build_archive(PROJECT_ROOT, runtime="unknown")
+
+    def test_ipc_cli_is_explicit_opt_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "ipc.zip"
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, main(["--runtime", "ipc", "--output", str(output)]))
+            with ZipFile(output) as archive:
+                self.assertIn("plugins/plugin.json", archive.namelist())
+                self.assertNotIn("plugins/__init__.py", archive.namelist())
+
     def test_build_is_byte_reproducible(self):
-        second = build_archive(PROJECT_ROOT, self.directory / "second.zip")
+        second = build_archive(PROJECT_ROOT, self.directory / "second.zip", runtime="ipc")
         self.assertEqual(
             hashlib.sha256(self.archive.read_bytes()).digest(),
             hashlib.sha256(second.read_bytes()).digest(),
@@ -190,7 +314,7 @@ print(PLUGIN_VERSION)
 
     def test_include_tests_remains_an_explicit_diagnostic_option(self):
         output = build_archive(
-            PROJECT_ROOT, self.directory / "diagnostic.zip", include_tests=True
+            PROJECT_ROOT, self.directory / "diagnostic.zip", include_tests=True, runtime="ipc"
         )
         with ZipFile(output) as archive:
             self.assertIn("plugins/tests/test_geometry.py", archive.namelist())
@@ -219,7 +343,7 @@ print(PLUGIN_VERSION)
                     (root / "plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
                     output.write_bytes(b"previous release")
                     with self.assertRaises((ValueError, FileNotFoundError)):
-                        build_archive(root, output)
+                        build_archive(root, output, runtime="ipc")
                     self.assertEqual(b"previous release", output.read_bytes())
                     self.assertEqual([], list(output.parent.glob("*.zip.tmp")))
 
@@ -232,7 +356,7 @@ print(PLUGIN_VERSION)
             path.write_text(json.dumps(manifest), encoding="utf-8")
             with mock.patch("package_plugin.IPC_PLUGIN_IDENTIFIER", LEGACY_IPC_PLUGIN_IDENTIFIER):
                 with self.assertRaisesRegex(ValueError, "strict reverse-DNS"):
-                    build_archive(root, Path(directory) / "invalid.zip")
+                    build_archive(root, Path(directory) / "invalid.zip", runtime="ipc")
 
     def test_invalid_pcm_template_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -245,14 +369,14 @@ print(PLUGIN_VERSION)
                     metadata[field] = value
                     path.write_text(json.dumps(metadata), encoding="utf-8")
                     with self.assertRaises(ValueError):
-                        build_archive(root, Path(directory) / "invalid.zip")
+                        build_archive(root, Path(directory) / "invalid.zip", runtime="ipc")
 
     def test_missing_runtime_file_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = self.copy_source(directory)
             (root / "requirements.txt").unlink()
             with self.assertRaisesRegex(FileNotFoundError, "requirements.txt"):
-                build_archive(root, Path(directory) / "invalid.zip")
+                build_archive(root, Path(directory) / "invalid.zip", runtime="ipc")
 
     def test_write_failure_preserves_release_and_cleans_temp_file(self):
         with tempfile.TemporaryDirectory() as directory:

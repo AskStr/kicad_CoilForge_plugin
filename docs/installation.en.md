@@ -1,126 +1,127 @@
 # Installation, compatibility and troubleshooting
 
-[简体中文](installation.md) · [Documentation index](README.md) · [Packaging](packaging.en.md)
+[简体中文](installation.md) · [Documentation index](README.md) · [Packaging and online releases](packaging.en.md)
 
-## Choose the right download
+## One package for KiCad 6–10.99
 
-- **v0.2.7+ release asset** `kicad_CoilForge_plugin-v<version>.zip`: a PCM IPC installation package.
-- **Old v0.2.6 ZIP**: a manually extracted directory archive, without PCM metadata.
-- **GitHub Source code (zip)**: a source archive, not a PCM installation package. Extract and build it first.
-- **Legacy ActionPlugin**: install the complete source directory, not the new IPC installation ZIP.
+Use **`kicad_CoilForge_plugin-v0.2.8-PCM.zip`** on every supported version.
+The existing v0.2.6 ActionPlugin/wxPython and IPC/Tk interfaces, coil algorithms and manual-install
+entrypoint are preserved. This change adapts PCM layout, metadata and startup selection rather than
+requiring separate runtime downloads.
 
-## Prerequisites
+| KiCad | Launch path | Requirements |
+|---|---|---|
+| 6, 7, 8 | Existing ActionPlugin / wxPython | Bundled pcbnew and wxPython; no IPC or Tk |
+| 9, 10.0, API disabled | Existing ActionPlugin / wxPython | Same as above |
+| 9, 10.0, API enabled | Existing IPC / Tk | Working API and the Python prerequisites below |
+| 10.99 | Existing IPC / Tk | API enabled and Python with `_tkinter` |
 
-| Component | Requirement |
-|---|---|
-| KiCad | Target 10.0+; package status is currently `testing` |
-| API | Enable the IPC API server in the Plugins preferences page |
-| Python | 3.10+, with working tkinter, venv and pip |
-| Python dependencies | `kicad-python>=0.7.1,<0.9`, managed by KiCad's plugin environment |
-| Editor | Open a PCB before launching; the action scope is `pcb` |
-| Initial dependency setup | Access to a Python package index, or a suitable mirror/cache |
+A PCM-only registration shim selects the runtime using the host version and API setting, avoiding
+duplicate entrypoints. **Restart the PCB editor after changing the API setting.** If the API is enabled
+but Python is incomplete, repair that environment rather than expecting a silent switch to another UI.
+KiCad 4/5 and future KiCad 11 are outside the declared range.
 
-The official IPC schema notes that Python `min_version` is not yet enforced by KiCad.
-The manifest therefore does not replace checking the selected interpreter.
+## Install from file
 
-### Verification boundary (September 6, 2026)
+1. Close PCB editors. Uninstall an earlier split-runtime or v0.2.7 package through PCM first when
+   replacing it. Move loadable manual duplicates aside without deleting user settings.
+2. Open KiCad's project manager → **Plugin and Content Manager** → **Install from File…**.
+3. Select `kicad_CoilForge_plugin-v0.2.8-PCM.zip` directly. Do not extract, recompress or add a wrapper directory.
+4. Reopen the PCB editor and a board, then click CoilForge's toolbar icon. The ActionPlugin path also
+   provides a **Tools → External Plugins** action; labels differ by version/language.
+5. If an older version hides the toolbar icon, enable/refresh it in Action Plugin management.
 
-- Windows: manifests were validated against the PCM v2 / IPC v1 schemas shipped with
-  **KiCad 10.0.4** and **10.99.0-2335-g1899bad41c**. The vendored snapshots match them byte-for-byte.
-- **KiCad 10.0.4**: native PCM **Install from File** installed the new ZIP in an isolated configuration.
-  All 21 installed runtime files were compared byte-for-byte with the archive. After a normal manager
-  exit, `installed_packages.json` correctly persisted version `0.2.7`, `runtime: ipc`, and local-file origin.
-- Both versions passed live IPC backend checks using code extracted from the release ZIP: connection,
-  settings path, nets, copper layers, selection, 8 arcs plus a group, 8 bounding boxes, and 69 two-layer
-  objects including tracks and vias.
-- The complete toolbar-to-UI workflow, complete upgrade/uninstall lifecycle, and macOS/Linux machines
-  have not all been verified. These checks are not a claim that every OS or KiCad version has passed.
-- KiCad 8/9 are outside this IPC package's compatibility declaration. Legacy ActionPlugin compatibility
-  is a separate concern.
+GitHub's **Source code (zip)** is not a PCM package. Do not copy files into KiCad's `site-packages`;
+PCM owns installation, update and removal directories.
 
-## Install through PCM
+## Online repository and updates
 
-1. Download the versioned release asset, or follow the [build instructions](packaging.en.md).
-2. Open KiCad's **project manager**, then **Plugin and Content Manager (PCM)**.
-3. Choose **Install from File…** and select the ZIP directly. Do not extract or re-compress it.
-4. In **Preferences → Plugins**, enable the API server and select a working Python interpreter.
-5. Restart the PCB editor, open a test board, and allow plugin environment setup to finish.
-6. Launch **CoilForge** through the IPC plugin controls/toolbar. Labels may vary by locale/version.
-
-PCM manages its own installation directory. Do not add another package-name directory or install the
-package into KiCad's bundled Python `site-packages`.
-
-### Python environment
-
-KiCad uses `plugins/requirements.txt` to prepare the IPC plugin environment. End users do not need
-`requirements-dev.txt` or the build/test-only `jsonschema` dependency.
-
-Check the same Python installation selected in KiCad:
+Standard PCM indexes are provided in `pcm/repository/repository.json` and `packages.json`.
+**Publish these files and the ZIP to their matching URLs before using the online service. This change
+only generates local files; it does not upload them.** Once published, the repository URL is:
 
 ```text
-python --version
-python -c "import tkinter, venv, pip; print('Python prerequisites OK')"
+https://raw.githubusercontent.com/AskStr/kicad_CoilForge_plugin/main/pcm/repository/repository.json
 ```
 
-If Windows preferences point to `pythonw.exe`, use the adjacent `python.exe` for these console checks.
-Some Linux Python distributions need a separate system Tk package. Do **not** run `pip install tkinter`.
-For dependency failures, inspect plugin environment logs, the interpreter and package-index access
-before reinstalling the ZIP.
+1. Add that URL in PCM's **Manage repositories / Manage**, then refresh.
+2. Install CoilForge from that repository so its installation record is associated with the repository.
+3. Enable PCM update checking where the host provides it, or open PCM and click **Refresh** manually.
+4. **KiCad 7–10.99:** PCM offers an update when a higher compatible version with an acceptable stability
+   level becomes available.
+5. **KiCad 6.0.11:** repository refresh retrieves newer version metadata, but this native PCM does not
+   provide the newer update state/one-click update action. Close editors, back up settings, uninstall
+   the old package through PCM and install the newer version from the same repository.
 
-## Upgrade and settings
+**Install from File** creates a local installation record; do not assume it automatically follows an
+online repository. To enable repository tracking, close editors, uninstall the local package in PCM
+and reinstall from that repository. Replacing bytes under the same `0.2.8` version does not create a
+version update: releases must increment the version and regenerate the indexes. See [release commands](packaging.en.md).
 
-### Upgrading a manually installed copy
+## IPC Python, including `_tkinter` on KiCad 10.99
 
-1. Close the relevant PCB editors and back up settings/profiles.
-2. Move the old manual plugin directory outside KiCad's plugin search paths to avoid duplicate copies.
-3. Install the new ZIP through PCM. Do not extract it over the old plugin directory.
+Keep a previously working interpreter. Where available, enable the API and choose Python in
+**Preferences → Plugins**. Python 3.10+ must include `tkinter`, `_tkinter`, Tcl/Tk, venv and pip.
+KiCad also prepares `kicad-python>=0.7.1,<0.9` in its managed environment; initial setup needs a
+working package index, mirror or cache. `_tkinter` is a native Python extension, not a package fixed
+by `pip install tkinter`. Never mix DLLs from different Python versions.
 
-### Identity and existing settings
-
-The new PCM and IPC identity is:
+Test complete initialization using KiCad's selected interpreter, not just an import:
 
 ```text
-com.github.askstr.kicad-coilforge-plugin
+python -c "import tkinter as tk, _tkinter, venv, pip; r=tk.Tk(); r.withdraw(); print('Tk OK', r.tk.call('info', 'patchlevel')); r.destroy()"
 ```
 
-The old IPC identity, `org.coilforge.kicad_spiral_plugin`, contains underscores. Although accepted by
-older schemas, it does not satisfy the stricter identifier check in updated KiCad runtime source.
-It is no longer used by the new manifest.
+For a `pythonw.exe` setting, use the adjacent `python.exe` for this check. After changing interpreters,
+restart the editor and confirm KiCad prepares the plugin environment with the new interpreter.
 
-Settings behavior:
+The checked KiCad 10.0.4 bundled Python lacked `_tkinter`. Previously both the IPC UI and its error
+dialog required Tk; pythonw also had no visible console, making a click appear to do nothing. The
+original Tk UI remains, with localized startup diagnostics and a native Windows error fallback that
+does not require Tk and identifies the actual interpreter. A narrowly matched settings-path API error
+on KiCad 9.0.7/10.0.4 is handled without hiding other failures.
 
-- Normally use the new identity's settings directory returned by the API.
-- If its `coilforge-settings.json` does not exist, but the sibling old identity has that file,
-  continue reading and writing the old file **in place**. Nothing is copied, moved or deleted.
-- If both files exist, prefer the new file and leave the old one untouched.
-- Shared user profiles retain their existing storage logic.
-- Settings are separate from PCM's installation directory; do not clear them to fix a packaging issue.
+## Verification boundary (September 6, 2026)
 
-KiCad 10.0 has an inverted validity check in its plugin-settings-path handler, reproduced on 10.0.4.
-Only when a **10.0-series server returns that specific error**, CoilForge resolves the settings path
-using KiCad's directory convention, including `KICAD_CONFIG_HOME`. Other API and connection failures
-are propagated rather than silently hidden.
+Actual Windows applications under `D:\KiCad` were tested using temporary boards and separate settings;
+production boards were not modified. Online checks used a local HTTP repository, **not a published
+GitHub service**.
 
-### Uninstall
+| Actual version | Native PCM online installation of the same ZIP | PCB toolbar launch | New online version check |
+|---|---|---|---|
+| 6.0.11 | Passed | ActionPlugin passed | New index retrieved; no native one-click update |
+| 7.0.11 | Passed | ActionPlugin passed | Native Update action passed |
+| 8.0.9 | Passed | ActionPlugin passed | Native Update action passed |
+| 9.0.7 | Passed | API off: ActionPlugin; API on: IPC, both passed | Native Update action passed |
+| 10.0.4 | Passed | API off: ActionPlugin; API on: IPC, both passed | Native Update action passed |
+| 10.99.0-2335-g1899bad41c | Passed | IPC/Tk passed | Native Update action passed |
 
-Use PCM to uninstall the new package and maintain its installation records. Remove old manual copies
-separately. Settings and runtime files are separate; explicitly clearing personal data is a separate
-user decision that should follow a backup and path verification.
+- 6.0.11 and 10.99 additionally passed native **Install from File**, persisted installation records
+  after normal manager exit, and subsequent toolbar launch.
+- Installed runtime files were compared byte-for-byte with the ZIP; online records retained repository IDs.
+- Update discovery used a temporary `0.2.9` fixture only. That fixture was not installed, uploaded or released.
+- IPC used Python 3.13.2, `_tkinter` and Tk 8.6.15. No legacy duplicate was registered with the API enabled.
+- Bundled Python/pcbnew/wxPython on 6–10.0 also passed registration-request, UI initialization and
+  repeated-click reuse checks. Standalone Python intercepts registration; the native editor tests above
+  cover real C++ registration and toolbar invocation.
+- Unit tests cover both schemas, layout, startup selection, diagnostics, settings compatibility and
+  repository history/hashes/timestamps.
+- `legacy_plugin.py`, `interface.py`, `ipc_ui.py`, `geometry.py` and `electrical.py` remain unchanged from v0.2.6.
+
+These are representative Windows builds, not every patch release or macOS/Linux verification.
+Applying real upgrades, post-uninstall data retention and exhaustive generation/undo/redo checks on all
+platforms remain release acceptance work. Metadata stays `testing`; passing installation tests does
+not imply every operation is verified.
 
 ## Troubleshooting
 
-| Symptom | Check |
-|---|---|
-| No valid `metadata.json` | Use the new release asset, not v0.2.6 or a GitHub source ZIP |
-| Installed but no action | API enabled, PCB open, editor restarted, plugin environment ready |
-| Incompatible KiCad version | The package declares 10.0+; do not edit metadata to bypass the check |
-| `No module named kipy` | Dependency setup failed in KiCad's managed environment; check interpreter/index/proxy |
-| `No module named tkinter` | The selected Python lacks Tk; repair or replace that Python installation |
-| Connection refused/timeout | Enable the API and launch through KiCad to receive its socket/token |
-| Valid identifier rejected | Use v0.2.7+ compatibility handling; report the full KiCad version if it persists |
-| Duplicate CoilForge actions | Look for older manually installed IPC or ActionPlugin copies |
-| Local ZIP installs but dependencies fail | The ZIP does not bundle Python or third-party wheels |
+- ZIP rejected: select `-PCM.zip`; `metadata.json` and `plugins/` must be at its root.
+- Missing/duplicate icon: restart, check manual duplicates, API settings and plugin enablement.
+- IPC action not ready: wait for environment preparation; check Python, pip access and API status.
+- Tk startup failure: run the full check above and inspect the interpreter path in the error message.
+- Repository failure: confirm publication, accessible URLs and matching index/ZIP hashes.
+- No update: check repository association, higher version number, compatibility and stability;
+  use the manual upgrade workflow on KiCad 6.
 
-When reporting issues, include OS, full KiCad version, archive filename, selected Python version,
-error text, and the failing stage: PCM installation, discovery, dependency setup, or execution.
-Do not publish tokens or other sensitive information.
+Include the full KiCad version, OS, installation method, API setting, interpreter path and error text
+when reporting a startup issue.

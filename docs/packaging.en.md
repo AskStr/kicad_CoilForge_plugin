@@ -1,10 +1,8 @@
-# PCM IPC packaging and release contract
+# Unified PCM packaging and online release contract
 
 [简体中文](packaging.md) · [Installation](installation.en.md) · [Documentation index](README.md)
 
 ## Build
-
-From the complete source checkout, with Python 3.10+:
 
 ```text
 python -m pip install -r requirements-dev.txt
@@ -12,107 +10,114 @@ python -m unittest discover -s tests -v
 python package_plugin.py
 ```
 
-Current output: `dist/kicad_CoilForge_plugin-v0.2.7.zip`.
+Default output: **`dist/kicad_CoilForge_plugin-v0.2.8-PCM.zip`**, one archive for KiCad 6–10.99.
+`jsonschema` is a development/build dependency, not a plugin runtime dependency.
+`--runtime swig` and `--runtime ipc` remain runtime-specific diagnostic builds, not the default user
+release workflow. `--include-tests` includes diagnostic sources, not a standalone test environment.
+
+## Installed layout and runtime
 
 ```text
-python package_plugin.py --output dist/custom-name.zip
-python package_plugin.py --include-tests --output dist/coilforge-diagnostic.zip
+metadata.json                         PCM root metadata; not extracted into the plugin
+plugins/
+  __init__.py                         PCM shim injected from pcm/entrypoint.py
+  kicad_spiral_plugin.py               Existing ActionPlugin wrapper
+  plugin.json                         IPC discovery manifest
+  ipc_plugin.py                       Existing IPC startup entrypoint
+  requirements.txt                    IPC dependencies
+  coilforge/                          All core modules, both UIs and algorithms
+  assets/                             Existing toolbar resources
+  LICENSE                             License
 ```
 
-- The default archive contains runtime files and the license only.
-- `--include-tests` retains the diagnostic option. It includes test sources for inspection, **not a
-  standalone development/test environment**. Run tests from the complete checkout; do not publish this variant.
-- `jsonschema` is a build/test dependency, absent from runtime `requirements.txt`.
-- Once development dependencies are installed, builds and schema validation are offline; `$schema`
-  does not trigger a download.
-- `pcm/metadata.template.json` is a template, not complete installable metadata.
+PCM places the contents of `plugins/` in its managed `plugins/com_github_askstr_kicad-coilforge-plugin/`.
+There is no extra package-name wrapper or nested `plugins/`. Development caches and tests are excluded
+by default. The manual-install source `__init__.py` is unchanged; only PCM builds inject runtime selection:
 
-## Archive layout
+- KiCad 6–8: register the original ActionPlugin.
+- KiCad 9/10.0: register ActionPlugin with the API disabled; otherwise leave discovery to IPC.
+- IPC-only hosts (10.99): safely skip legacy registration when pcbnew is unavailable; use `plugin.json`.
+- Restart the editor after API changes. IPC still requires `_tkinter`; its Tk UI is not replaced.
 
-```text
-kicad_CoilForge_plugin-v<version>.zip
-├── metadata.json
-└── plugins/
-    ├── plugin.json
-    ├── ipc_plugin.py
-    ├── requirements.txt
-    ├── LICENSE
-    ├── assets/
-    │   └── coilforge.png
-    └── coilforge/
-        ├── __init__.py
-        ├── metadata.py
-        ├── ipc_backend.py
-        ├── ipc_ui.py
-        └── other runtime modules
-```
+### Metadata accepted by old PCM and IPC-only hosts
 
-- Root `metadata.json` contains exactly one version: this release.
-- `versions[0].runtime` is `ipc`; the separate `plugin.json` runtime type remains `python`.
-- Do not wrap everything in the old `kicad_CoilForge_plugin/` directory or pre-insert a package-id directory.
-- PCM maps `plugins/$contents` to the third-party directory's `plugins/$clean_package_id/$contents`.
-  Dots in the package identifier become underscores in the installation directory.
-- Entrypoint and icon paths resolve relative to the installed plugin root; the builder checks their existence and safety.
-- The source-root legacy registration files `__init__.py` and `kicad_spiral_plugin.py` are excluded.
-  Passive legacy modules inside `coilforge/` do not register themselves on IPC import.
-- Documentation, the builder, schemas, development dependencies, caches, virtual environments and
-  personal settings are excluded from the default archive.
-- PCM's 64×64 `resources/icon.png` is optional and is not included in this release. The existing
-  32×32 IPC toolbar icon is retained unchanged, not repurposed as a PCM display icon.
+The unified package uses the PCM v1 root schema with `runtime: ipc`, `kicad_version: 6.0` and
+`kicad_version_max: 10.99` in the version entry. KiCad 6–8 v1 readers permit and ignore the extension;
+9/10 support IPC; 10.99 requires the IPC runtime. This metadata does not make KiCad 6 execute IPC:
+the traditional discovery files remain. Builds validate against both official PCM v1 and v2 schemas
+without weakening either schema.
 
-## Metadata and identities
+PCM uses the older `GPL-3.0` license label accepted by KiCad 6; the actual `LICENSE` is unchanged.
+The optional PCM `resources/icon.png` is not included; the existing toolbar icon is preserved.
+
+## Versions, identifiers and reproducibility
 
 `coilforge/metadata.py` is the source of truth:
 
-| Constant | Purpose |
+- `PLUGIN_VERSION`: currently `0.2.8`, used in the UI, filename and PCM version.
+- `PCM_ARCHIVE_BASENAME`: unified filename including `-PCM`.
+- `PCM_PACKAGE_IDENTIFIER` / `IPC_PLUGIN_IDENTIFIER`: the stable
+  `com.github.askstr.kicad-coilforge-plugin`; do not change it for updates.
+- `MIN_LEGACY_KICAD_VERSION` / `MAX_PCM_KICAD_VERSION`: unified range `6.0`–`10.99`.
+- Older runtime-specific minimum/maximum constants serve diagnostic builds, not the unified range.
+- `LEGACY_IPC_PLUGIN_IDENTIFIER`: existing settings compatibility only, never the new manifest identity.
+
+`plugin.json` must agree with the identifier constants; mismatches fail rather than being silently fixed.
+The template owns author, description, license and links; the builder adds versions and actual
+`install_size`, excluding root metadata that PCM does not extract. Status remains `testing`.
+Omitting `platforms` disables platform filtering; it is not a claim of testing all platforms.
+
+Builds check required files, official PCM/IPC schemas, reverse-DNS identifiers, action uniqueness and
+resource paths. Entry order, ZIP timestamps, attributes, paths and compression settings are fixed;
+the output is atomically replaced only after success. Identical source bytes and Python/zlib tools
+produce identical bytes; different compression tools or source line endings may change the hash.
+See [schema snapshots, sources and hashes](../pcm/schemas/README.md).
+
+## Generate the online repository
+
+Build the ZIP first, then generate external indexes. Never insert the ZIP's own hash into that ZIP.
+Run this command from the repository root:
+
+```text
+python package_repository.py --archive dist/kicad_CoilForge_plugin-v0.2.8-PCM.zip --output pcm/repository --base-url https://raw.githubusercontent.com/AskStr/kicad_CoilForge_plugin/main/pcm/repository --download-url https://github.com/AskStr/kicad_CoilForge_plugin/releases/download/V0.2.8/kicad_CoilForge_plugin-v0.2.8-PCM.zip
+```
+
+This tool only writes local files; it does not upload, contact the network or modify KiCad settings.
+
+| File | Contents |
 |---|---|
-| `PLUGIN_VERSION` | Runtime version, ZIP filename and PCM version entry |
-| `PACKAGE_IDENTIFIER` | Historical filename/legacy directory name, not the PCM identity |
-| `PCM_PACKAGE_IDENTIFIER` | `com.github.askstr.kicad-coilforge-plugin` |
-| `IPC_PLUGIN_IDENTIFIER` | Same as PCM identity; satisfies strict reverse-DNS validation |
-| `LEGACY_IPC_PLUGIN_IDENTIFIER` | Lookup of old settings only; absent from the new runtime manifest |
-| `MIN_KICAD_VERSION` | Current target: `10.0` |
+| `packages.json` | Package metadata, release history, direct download URLs, exact sizes and SHA-256 hashes |
+| `repository.json` | Repository name, maintainer, packages URL/hash and UTC update time/timestamp |
 
-Source `plugin.json` must match the identity constant. The builder rejects drift rather than silently
-rewriting the manifest. Change `PLUGIN_VERSION` for a release, then update current-output examples
-and the compatibility record in documentation.
+- Both indexes validate against PCM v1/v2. HTTP(S) URLs must not contain credentials or fragments.
+- Existing output `packages.json` is merged by default; `--previous-packages` supplies explicit history.
+- Versions sort numerically with epoch and retain history, not lexicographically (`0.2.9` vs `0.2.10`).
+- Previously listed version bytes are immutable. A changed ZIP hash is rejected with a request to bump `PLUGIN_VERSION`.
+- Unchanged content retains its timestamp. Changed content advances it even if the clock moves backward.
+- `--timestamp` fixes a Unix timestamp for reproducibility; changed content rejects a non-increasing value.
+- All validation precedes writes. Each index is atomically replaced, the root index last. This is not a
+  cross-file transaction: refresh again after a transient publication mismatch; never disable hash checking.
 
-The template maintains descriptions, author, license, resource links and tags. The builder injects
-name, identifier and version data. `install_size` counts uncompressed installed payload bytes,
-excluding root metadata that PCM does not extract.
+### Publish and release subsequent updates
 
-The release status is `testing`. Omitting `platforms` avoids artificial platform filtering; it does
-not claim every platform has been tested. See the [verification matrix](installation.en.md).
+1. For this first unified release, build and test the final ZIP; do not substitute an older split archive.
+2. Upload it as an asset of GitHub Release `V0.2.8`, matching the direct download URL in the index.
+3. Generate/verify both indexes and publish them together under `pcm/repository/` on `main`.
+4. Users add the `repository.json` URL to PCM and install from that repository.
+5. For later releases, increment `PLUGIN_VERSION`, update documentation examples, build the new ZIP,
+   and regenerate using the new tag/download URL while retaining index history. Never reuse a version.
+6. Publish the ZIP before updating indexes, so clients do not discover an unavailable download.
 
-Do not embed `download_url`, `download_size` or `download_sha256` in the archive's version entry.
-For a future online repository, generate these in **external repository metadata after building**
-the ZIP. Do not inject a ZIP's own hash back into that ZIP. This change does not create an online
-repository or publish anything remotely.
+URLs in generated files are publication targets, not proof that remote files already exist. This change
+does not create a remote release, upload assets or push the repository. Never publish the QA-only
+`0.2.9` fixtures under `.tmp` as real releases.
 
-## Validation and failure behavior
+PCM selects updates by version, compatibility and stability. Existing `testing` installations can follow
+subsequent `testing` or more stable releases; do not expect `stable` users to receive a less-stable release.
+A local-file install is not automatically an online-repository install. See [installation](installation.en.md)
+for repository association and KiCad 6's manual upgrade limitation.
 
-Each build:
-
-1. Checks required runtime files and reads the release payload.
-2. Validates `plugin.json` against the official IPC v1 schema.
-3. Checks strict reverse-DNS identity, Python runtime, nonempty/unique actions, and referenced files.
-4. Generates PCM metadata and validates it against the official PCM v2 schema.
-5. Writes a temporary ZIP with sorted entries, fixed timestamps, Unix file attributes, POSIX paths
-   and a fixed compression level.
-6. Atomically replaces the output only after success. Validation/write failures preserve the previous
-   release and clean up temporary archive files.
-
-Pinned schemas and provenance are documented in [pcm/schemas/README.md](../pcm/schemas/README.md).
-Review schema updates explicitly, update provenance/hashes, and run positive and negative tests.
-Do not weaken validation to hide a failure.
-
-Builds are reproducible for identical input bytes and the same Python/zlib toolchain. Different
-compression-library versions or source line endings can change hashes; fixed timestamps alone do
-not guarantee byte identity across arbitrary toolchains.
-
-## Release checklist
-
-### Automated checks
+## Release acceptance
 
 ```text
 python -m unittest discover -s tests -v
@@ -121,28 +126,19 @@ python package_plugin.py --output dist/verify-b.zip
 python -c "import hashlib,pathlib; a=pathlib.Path('dist/verify-a.zip').read_bytes(); b=pathlib.Path('dist/verify-b.zip').read_bytes(); assert a==b; print(hashlib.sha256(a).hexdigest())"
 ```
 
-Tests cover official schemas, metadata consistency, installation layout, isolated imports, UTF-8
-text, resources, version/settings compatibility, deterministic output, invalid manifests, and
-preserving the previous artifact on write failure.
+Regressions cover layout, preservation of all core modules, runtime selection, no IPC/Tk dependency
+on the legacy path, UTF-8, invalid manifests, write-failure protection, hashes/sizes, history, numeric
+versions, immutable releases and update timestamps. See the [native version matrix and remaining work](installation.en.md#verification-boundary-september-6-2026).
 
-### Real KiCad checks
+Before marking releases `stable`, also verify real update application, settings retention, uninstall,
+board generation and undo/redo across target platforms. Passing unit tests or update discovery does
+not imply the entire update application workflow was tested.
 
-- [ ] Use native PCM **Install from File** in a clean/isolated configuration, not just manual extraction.
-- [ ] Check installed package metadata/path and discovery after restarting.
-- [ ] Allow managed Python setup to finish and open the UI through the actual IPC action.
-- [ ] Generate on a disposable board; check geometry, grouping, undo and redo.
-- [ ] Upgrade with the same identity and a newer version; retain existing settings.
-- [ ] Uninstall and verify runtime removal and the intended settings/profile retention behavior.
-- [ ] Record full KiCad and OS versions before deciding whether to mark the release `stable`.
-
-See the [installation verification record](installation.en.md#verification-boundary-september-6-2026)
-for completed checks and remaining gaps. Unit tests do not complete the whole checklist automatically.
-
-## Official references
+## Primary specifications
 
 - [KiCad Add-on Packages / PCM](https://dev-docs.kicad.org/en/addons/)
-- [KiCad IPC plugin development](https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/)
-- [PCM v2 schema](https://go.kicad.org/pcm/schemas/v2)
+- [KiCad IPC add-on development](https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/)
+- [PCM v1 schema](https://go.kicad.org/pcm/schemas/v1) / [PCM v2 schema](https://go.kicad.org/pcm/schemas/v2)
 - [IPC v1 schema](https://go.kicad.org/api/schemas/v1)
-- [KiCad 10.0.4 PCM installer](https://github.com/KiCad/kicad-source-mirror/blob/10.0.4/kicad/pcm/pcm_task_manager.cpp)
-- [KiCad 10.0.4 settings-path handler](https://github.com/KiCad/kicad-source-mirror/blob/10.0.4/common/api/api_handler_common.cpp)
+- [KiCad 6.0.11 PCM state and repository caching](https://github.com/KiCad/kicad-source-mirror/blob/6.0.11/kicad/pcm/pcm.cpp)
+- [KiCad 10.0.4 PCM installation](https://github.com/KiCad/kicad-source-mirror/blob/10.0.4/kicad/pcm/pcm_task_manager.cpp)

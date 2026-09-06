@@ -303,6 +303,19 @@ class IpcSettingsPathTests(unittest.TestCase):
                         self.assertEqual(expected, self.backend.plugin_settings_file())
             self.assertFalse(Path(expected).exists())
 
+    def test_kicad_9_0_uses_its_own_versioned_settings_fallback(self):
+        from kipy.errors import ApiError
+        from coilforge.metadata import IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME
+        self.backend.version = SimpleNamespace(major=9, minor=0, patch=7)
+        error = ApiError("KiCad returned error: plugin identifier is invalid")
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(self.client, "get_plugin_settings_path", side_effect=error), \
+                    mock.patch.dict(os.environ, {"KICAD_CONFIG_HOME": directory}):
+                self.assertEqual(
+                    os.path.join(directory, "9.0", "plugins", IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME),
+                    self.backend.plugin_settings_file(),
+                )
+
     def test_other_api_errors_and_versions_are_not_hidden(self):
         from kipy.errors import ApiError
         from kipy.proto.common.envelope_pb2 import ApiStatusCode

@@ -84,14 +84,17 @@ class IpcBoardBackend(object):
         try:
             directory = self.kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
         except ApiError as error:
-            # KiCad 10.0's handler has an inverted IsValidIdentifier check
-            # (reproduced on 10.0.4). Do not hide transport or unrelated errors.
-            if ((self.version.major, self.version.minor) != (10, 0)
+            # KiCad 9.0/10.0 handlers have an inverted IsValidIdentifier check
+            # (reproduced on 9.0.7 and 10.0.4). Do not hide transport or unrelated errors.
+            if ((self.version.major, self.version.minor) not in ((9, 0), (10, 0))
                     or error.code != ApiStatusCode.AS_BAD_REQUEST
                     or str(error) != "KiCad returned error: plugin identifier is invalid"):
                 raise
             config_root = os.environ.get("KICAD_CONFIG_HOME") or platform_kicad_config_root()
-            directory = os.path.join(config_root, "10.0", "plugins", PLUGIN_IDENTIFIER)
+            directory = os.path.join(
+                config_root, "{}.{}".format(self.version.major, self.version.minor),
+                "plugins", PLUGIN_IDENTIFIER,
+            )
 
         current = os.path.join(directory, SETTINGS_FILENAME)
         legacy = os.path.join(
