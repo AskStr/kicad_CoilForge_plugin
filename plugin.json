@@ -1,6 +1,6 @@
 {
   "$schema": "https://go.kicad.org/api/schemas/v1",
-  "identifier": "org.coilforge.kicad_spiral_plugin",
+  "identifier": "com.github.askstr.kicad-coilforge-plugin",
   "name": "CoilForge",
   "description": "By askstar / 问星。Creates configurable circular and motor PCB coils / 可生成可配置的圆形及电机 PCB 线圈。",
   "runtime": {

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""KiCad 10.99 IPC backend for creating spiral PCB coils."""
+"""KiCad IPC backend for creating spiral PCB coils."""
 
 from math import cos, hypot, pi, sin
 import os
@@ -20,12 +20,18 @@ except ImportError:
     )
 
 try:
-    from .metadata import SETTINGS_FILENAME
+    from .kicad_paths import platform_kicad_config_root
+    from .metadata import (
+        IPC_PLUGIN_IDENTIFIER, LEGACY_IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME,
+    )
 except ImportError:
-    from metadata import SETTINGS_FILENAME
+    from kicad_paths import platform_kicad_config_root
+    from metadata import (
+        IPC_PLUGIN_IDENTIFIER, LEGACY_IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME,
+    )
 
 
-PLUGIN_IDENTIFIER = "org.coilforge.kicad_spiral_plugin"
+PLUGIN_IDENTIFIER = IPC_PLUGIN_IDENTIFIER
 NM_PER_MM = 1000000
 
 
@@ -72,8 +78,30 @@ class IpcBoardBackend(object):
         )
 
     def plugin_settings_file(self):
-        directory = self.kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
-        return os.path.join(directory, SETTINGS_FILENAME)
+        from kipy.errors import ApiError
+        from kipy.proto.common.envelope_pb2 import ApiStatusCode
+
+        try:
+            directory = self.kicad.get_plugin_settings_path(PLUGIN_IDENTIFIER)
+        except ApiError as error:
+            # KiCad 10.0's handler has an inverted IsValidIdentifier check
+            # (reproduced on 10.0.4). Do not hide transport or unrelated errors.
+            if ((self.version.major, self.version.minor) != (10, 0)
+                    or error.code != ApiStatusCode.AS_BAD_REQUEST
+                    or str(error) != "KiCad returned error: plugin identifier is invalid"):
+                raise
+            config_root = os.environ.get("KICAD_CONFIG_HOME") or platform_kicad_config_root()
+            directory = os.path.join(config_root, "10.0", "plugins", PLUGIN_IDENTIFIER)
+
+        current = os.path.join(directory, SETTINGS_FILENAME)
+        legacy = os.path.join(
+            os.path.dirname(directory), LEGACY_IPC_PLUGIN_IDENTIFIER, SETTINGS_FILENAME
+        )
+        # Retain existing settings in place; never move/delete a user's files.
+        # If both exist, the current identity takes precedence.
+        if not os.path.isfile(current) and os.path.isfile(legacy):
+            return legacy
+        return current
 
     def net_items(self):
         nets = sorted(self.board.get_nets(), key=lambda net: net.name.lower())

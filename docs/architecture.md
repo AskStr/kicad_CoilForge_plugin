@@ -11,6 +11,20 @@
 - `coilforge/electrical.py`：电气估算与目标搜索。
 - `coilforge/workflow.py`：双界面共享的参数显隐和步骤快照锁定。
 
+## 安装包与运行时边界
+
+默认发布包为 PCM IPC ZIP：根目录 `metadata.json` 负责安装和版本信息，`plugins/plugin.json`
+负责 IPC 运行配置。PCM 自动插入包标识符目录，入口的相对导入和图标路径保持不变。
+
+`coilforge/metadata.py` 集中维护品牌、版本、统一的 PCM / IPC 标识符和旧设置标识符。
+`package_plugin.py` 从 `pcm/metadata.template.json` 生成安装元数据，并使用
+`pcm/schemas/` 的官方快照验证两份清单。构建工具及 Schema 不进入默认运行包。
+
+源码根目录的传统注册入口不进入 IPC ZIP；核心包中保留的传统模块不会自动注册。
+IPC 设置优先通过 `get_plugin_settings_path()` 获取路径；对 KiCad 10.0 的特定上游错误做
+窄范围兼容，并保留旧设置原位读取能力，不写入 PCM 安装目录。
+完整布局与发布边界见[打包规范](packaging.md)。
+
 ## 场景化步骤锁定
 
 `WorkflowLocks` 为当前场景实际保留的步骤定义字段集合。向后进入新步骤时保存已完成步骤快照；自动推荐和电机求解读取 `fixed_values()`，不得覆盖这些字段。返回较早步骤时，`unlock_from()` 清除该步及其后的快照。

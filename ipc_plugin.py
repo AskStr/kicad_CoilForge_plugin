@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""KiCad 10.99 IPC action entrypoint for CoilForge."""
+"""KiCad IPC action entrypoint for CoilForge."""
 
 import os
 import sys
